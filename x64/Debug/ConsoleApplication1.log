@@ -1,6 +1,0 @@
-﻿  Scanning sources for module dependencies...
-  betaVAE.c
-C:\Users\sploo\source\repos\ConsoleApplication1\ConsoleApplication1\neural_net.h(65,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data
-  (compiling source file 'betaVAE.c')
-  
-  ConsoleApplication1.vcxproj -> C:\Users\sploo\source\repos\ConsoleApplication1\x64\Debug\ConsoleApplication1.exe
