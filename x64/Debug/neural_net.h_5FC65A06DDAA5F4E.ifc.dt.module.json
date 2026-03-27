@@ -1,0 +1,22 @@
+{
+    "version": 1,
+    "revision": 0,
+    "rules": [
+        {
+            "primary-output": "x64\\Debug\\neural_net.obj",
+            "outputs": [
+                "x64\\Debug\\neural_net.h_5FC65A06DDAA5F4E.ifc.dt.module.json",
+                "x64\\Debug\\neural_net.h_5FC65A06DDAA5F4E.ifc.dt.d.json",
+                "x64\\Debug\\neural_net.h.ifc"
+            ],
+            "provides": [
+                {
+                    "logical-name": "C:\\Users\\sploo\\source\\repos\\ConsoleApplication1\\ConsoleApplication1\\neural_net.h",
+                    "source-path": "c:\\users\\sploo\\source\\repos\\consoleapplication1\\consoleapplication1\\neural_net.h",
+                    "lookup-method": "absolute"
+                }
+            ],
+            "requires": []
+        }
+    ]
+}
