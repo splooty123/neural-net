@@ -1,5 +1,5 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
-#include <stdint.h>
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
@@ -22,7 +22,7 @@ void makeBMP(const char* filename, int width, int height, const unsigned char* r
     FILE* f = fopen(filename, "wb");
     if (!f) return;
 
-    int rowSize = (3 * width + 3) & ~3;  // pad to 4 bytes
+    int rowSize = (3 * width + 3) & ~3;
     int dataSize = rowSize * height;
     int fileSize = 54 + dataSize;
 
@@ -44,19 +44,16 @@ void makeBMP(const char* filename, int width, int height, const unsigned char* r
         0,0,0,0
     };
 
-    // file size
     header[2] = fileSize;
     header[3] = fileSize >> 8;
     header[4] = fileSize >> 16;
     header[5] = fileSize >> 24;
 
-    // width
     header[18] = width;
     header[19] = width >> 8;
     header[20] = width >> 16;
     header[21] = width >> 24;
 
-    // height
     header[22] = height;
     header[23] = height >> 8;
     header[24] = height >> 16;
@@ -64,14 +61,14 @@ void makeBMP(const char* filename, int width, int height, const unsigned char* r
 
     fwrite(header, 1, 54, f);
 
-    unsigned char* row = malloc(rowSize);
+    unsigned char* row = (unsigned char*)malloc(rowSize);
 
     for (int y = height - 1; y >= 0; y--) {
         for (int x = 0; x < width; x++) {
             int i = (y * width + x) * 3;
-            row[x * 3 + 0] = rgb[i + 2]; // B
-            row[x * 3 + 1] = rgb[i + 1]; // G
-            row[x * 3 + 2] = rgb[i + 0]; // R
+            row[x * 3] = rgb[i + 2];
+            row[x * 3 + 1] = rgb[i + 1];
+            row[x * 3 + 2] = rgb[i];
         }
         for (int p = width * 3; p < rowSize; p++) row[p] = 0;
         fwrite(row, 1, rowSize, f);
@@ -138,12 +135,6 @@ static int load_all_images(const char* folder, unsigned char*** out_imgs, int* c
 }
 
 static void draw_image(const unsigned char* img, int w, int h, int width, int height) {
-    if (w < 0) {
-        w = width;
-    }
-    if (h < 0) {
-        h = width;
-    }
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             int srcX = x * width / w;
@@ -206,8 +197,18 @@ static inline void progress_bar(int a, int b, int length) {
 int main() {
     srand((unsigned int)time(NULL));
 
-    unsigned int width = 64;
-    unsigned int height = 64;
+    int output_images = 0;
+    unsigned int width = 0;
+    unsigned int height = 0;
+
+    printf("image output: ");
+    scanf(" %d", &output_images);
+
+    printf("width: ");
+    scanf(" %u", &width);
+
+    printf("height: ");
+    scanf(" %u", &height);
 
     neural_net betavae;
     neural_net_init(&betavae, 5, (unsigned int[]) { width * height * 3, 512, 256, 512, width * height * 3 });
@@ -229,6 +230,7 @@ int main() {
         imgs_float[i] = normalize_rgb(imgs[i], width * height * 3);
     }
 
+    system("cls");
     float losses[MAX_EPOCH];
     for (int epoch = 0; epoch < MAX_EPOCH; epoch++) {
         float error = 0;
@@ -243,7 +245,7 @@ int main() {
         float* layer = get_layer(&betavae, betavae.size - 1);
         unsigned char* draw_img = unnormalize_rgb(layer, width * height * 3);
 
-        /*if (epoch % 10 == 0) {
+        if ((epoch % 10 == 0) && output_images) {
             unsigned char* bmp = (unsigned char*)malloc(width * height * 6 * sizeof(unsigned char));
             if (!bmp)exit(1);
             memcpy(bmp, imgs[draw_image_index], width * height * 3);
@@ -252,7 +254,7 @@ int main() {
             snprintf(name, sizeof(name), "image_output/%04d.bmp", epoch);
             makeBMP(name, width, 2 * height, bmp);
             free(bmp);
-        }*/
+        }
 
         printf("\033[H");
 
