@@ -8,7 +8,7 @@
 #include "neural_net.h"
 #include "stb_image.h"
 
-#define MAX_EPOCH 501
+#define MAX_EPOCH 1001
 
 static inline void setup_console() {
     SetConsoleOutputCP(CP_UTF8);
@@ -81,16 +81,23 @@ void makeBMP(const char* filename, int width, int height, const unsigned char* r
 static unsigned char* load_image(const char* path, int newW, int newH) {
     int w, h, channels;
     unsigned char* input = stbi_load(path, &w, &h, &channels, 3);
-    unsigned char* output = malloc(newW * newH * 3);
 
-    if (!(input && output))exit(1);
+    if (!input) {
+        printf("Failed to load image: %s\n", path);
+        return NULL;
+    }
+
+    unsigned char* output = malloc(newW * newH * 3);
+    if (!output) {
+        printf("Out of memory resizing: %s\n", path);
+        stbi_image_free(input);
+        return NULL;
+    }
 
     for (int y = 0; y < newH; y++) {
         for (int x = 0; x < newW; x++) {
-
             int srcX = x * w / newW;
             int srcY = y * h / newH;
-
             int srcIndex = (srcY * w + srcX) * 3;
             int dstIndex = (y * newW + x) * 3;
 
@@ -105,33 +112,60 @@ static unsigned char* load_image(const char* path, int newW, int newH) {
 }
 
 static int load_all_images(const char* folder, unsigned char*** out_imgs, int* count, int width, int height) {
-    WIN32_FIND_DATAA fd;
+    char cwd[512];
+    GetCurrentDirectoryA(512, cwd);
+    printf("CWD = %s\n", cwd);
+
     char search_path[MAX_PATH];
     snprintf(search_path, MAX_PATH, "%s\\*.png", folder);
 
+    printf("Searching for images in: %s\n", search_path);
+
+    WIN32_FIND_DATAA fd;
     HANDLE h = FindFirstFileA(search_path, &fd);
-    if (h == INVALID_HANDLE_VALUE) return 0;
+
+    if (h == INVALID_HANDLE_VALUE) {
+        printf("No PNG files found in folder: %s\n", folder);
+        return 0;
+    }
 
     unsigned char** imgs = NULL;
     int img_count = 0;
 
     do {
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+
             char fullpath[MAX_PATH];
             snprintf(fullpath, MAX_PATH, "%s\\%s", folder, fd.cFileName);
 
-            unsigned char* img = (unsigned char*)load_image(fullpath, width, height);
-            imgs = realloc(imgs, sizeof(unsigned char*) * (img_count + 1));
-            if (!imgs)exit(1);
+            printf("Loading: %d %s\n", img_count, fullpath);
+
+            unsigned char* img = load_image(fullpath, width, height);
+
+            if (!img) {
+                printf("Skipping bad image: %s\n", fullpath);
+                continue;
+            }
+
+            unsigned char** new_imgs = realloc(imgs, sizeof(unsigned char*) * (img_count + 1));
+            if (!new_imgs) {
+                printf("Memory allocation failed.\n");
+                exit(1);
+            }
+
+            imgs = new_imgs;
             imgs[img_count++] = img;
         }
+
     } while (FindNextFileA(h, &fd));
 
     FindClose(h);
 
+    printf("Loaded %d valid images.\n", img_count);
+
     *out_imgs = imgs;
     *count = img_count;
-    return 1;
+    return img_count > 0;
 }
 
 static void draw_image(const unsigned char* img, int w, int h, int width, int height) {
@@ -197,12 +231,16 @@ static inline void progress_bar(int a, int b, int length) {
 int main() {
     srand((unsigned int)time(NULL));
 
+    int draw_pictures = 0;
     int output_images = 0;
     unsigned int width = 0;
     unsigned int height = 0;
 
     printf("image output: ");
     scanf(" %d", &output_images);
+
+    printf("draw to console: ");
+    scanf(" %d", &draw_pictures);
 
     printf("width: ");
     scanf(" %u", &width);
@@ -211,18 +249,14 @@ int main() {
     scanf(" %u", &height);
 
     neural_net betavae;
-    neural_net_init(&betavae, 5, (unsigned int[]) { width * height * 3, 512, 256, 512, width * height * 3 });
-
+    neural_net_init(&betavae, 5, (unsigned int[]) { width* height * 3, 256, 64, 256, width* height * 3 });
     setup_console();
 
     unsigned char** imgs;
     int img_count;
 
-    if (!load_all_images("images", &imgs, &img_count, width, height)) {
-        printf("No images found.\n");
-        return 1;
-    }
-
+    load_all_images("images", &imgs, &img_count, width, height);
+    
     float** imgs_float = malloc(sizeof(float*) * img_count);
 
     if (!imgs_float)exit(1);
@@ -230,43 +264,55 @@ int main() {
         imgs_float[i] = normalize_rgb(imgs[i], width * height * 3);
     }
 
+    printf("loaded %d images", img_count);
+
     system("cls");
     float losses[MAX_EPOCH];
     for (int epoch = 0; epoch < MAX_EPOCH; epoch++) {
         float error = 0;
         for (int i = 0; i < img_count; i++) {
             forward_prop(&betavae, imgs_float[i]);
-            error += backward_prop(&betavae, imgs_float[i], 0.001f) / img_count;
+            error += backward_prop(&betavae, imgs_float[i], 0.0005f) / img_count;
         }
         losses[epoch] = error;
-        int draw_image_index = 6 /*rand() % img_count*/;
+        
+        if (output_images || draw_pictures) {
+            int draw_image_index = 249; //rand() % img_count;
 
-        forward_prop(&betavae, imgs_float[draw_image_index]);
-        float* layer = get_layer(&betavae, betavae.size - 1);
-        unsigned char* draw_img = unnormalize_rgb(layer, width * height * 3);
+            forward_prop(&betavae, imgs_float[draw_image_index]);
+            float* layer = get_layer(&betavae, betavae.size - 1);
+            unsigned char* draw_img = unnormalize_rgb(layer, width * height * 3);
 
-        if ((epoch % 10 == 0) && output_images) {
-            unsigned char* bmp = (unsigned char*)malloc(width * height * 6 * sizeof(unsigned char));
-            if (!bmp)exit(1);
-            memcpy(bmp, imgs[draw_image_index], width * height * 3);
-            memcpy(bmp + width * height * 3, draw_img, width* height * 3);
-            char name[32];
-            snprintf(name, sizeof(name), "image_output/%04d.bmp", epoch);
-            makeBMP(name, width, 2 * height, bmp);
-            free(bmp);
+            if ((epoch % 10 == 0) && output_images) {
+                unsigned char* bmp = (unsigned char*)malloc(width * height * 6 * sizeof(unsigned char));
+                if (!bmp)exit(1);
+                memcpy(bmp, imgs[draw_image_index], width * height * 3);
+                memcpy(bmp + width * height * 3, draw_img, width * height * 3);
+                char name[32];
+                snprintf(name, sizeof(name), "image_output/%04d.bmp", epoch);
+                makeBMP(name, width, 2 * height, bmp);
+                free(bmp);
+            }
+
+            printf("\033[H");
+
+            if (draw_pictures) {
+                draw_image(imgs[draw_image_index], width, height, width, height);
+                draw_image(draw_img, width, height, width, height);
+            }
+
+            printf("\n");
+            progress_bar(MAX_EPOCH, epoch, 20);
+            printf(" epoch: %d loss: %f", epoch + 1, error);
+
+            free(layer);
+            free(draw_img);
         }
-
-        printf("\033[H");
-
-        draw_image(imgs[draw_image_index], width, height, width, height);
-        draw_image(draw_img, width, height, width, height);
-
-        printf("\n");
-        progress_bar(MAX_EPOCH, epoch, 20);
-        printf(" epoch: %d loss: %f", epoch + 1, error);
-
-        free(layer);
-        free(draw_img);
+        else {
+            printf("\033[H");
+            progress_bar(MAX_EPOCH, epoch, 20);
+            printf(" epoch: %d loss: %f", epoch + 1, error);
+        }
     }
 
     for (int i = 0; i < img_count; i++) {
